@@ -13,7 +13,8 @@ public sealed class NetworkTransferService : INetworkTransferService
 {
     public const int DefaultPort = 49_736;
     private const string ProductIdentifier = "SmartSwitch.Migration";
-    private const int ProtocolVersion = 1;
+    private const int ProtocolVersion = 2;
+    private const string ApplicationProtocol = "smartswitch/2";
     private const int BufferSize = 128 * 1024;
     private const int MaximumFileCount = 1_000_000;
     private readonly IMigrationLogger _logger;
@@ -60,9 +61,10 @@ public sealed class NetworkTransferService : INetworkTransferService
                 TargetHost = ProductIdentifier,
                 EnabledSslProtocols = SslProtocols.Tls12 | SslProtocols.Tls13,
                 CertificateRevocationCheckMode = X509RevocationMode.NoCheck,
-                ApplicationProtocols = [new SslApplicationProtocol("smartswitch/1")],
+                ApplicationProtocols = [new SslApplicationProtocol(ApplicationProtocol)],
             },
             cancellationToken);
+        EnsureNegotiatedApplicationProtocol(secureStream);
 
         var remoteCertificate = secureStream.RemoteCertificate ??
             throw new AuthenticationException("Le receveur n'a fourni aucun certificat TLS.");
@@ -74,9 +76,20 @@ public sealed class NetworkTransferService : INetworkTransferService
             cancellationToken);
 
         var totalBytes = request.Files.Sum(file => file.Length);
+        var sessionId = request.SessionId.GetValueOrDefault(Guid.NewGuid());
+        if (sessionId == Guid.Empty)
+        {
+            throw new ArgumentException("L'identifiant de session est invalide.", nameof(request));
+        }
+
         await ProtocolFrame.WriteAsync(
             secureStream,
-            new TransferManifest(Environment.MachineName, request.Files.Count, totalBytes),
+            new TransferManifest(
+                Environment.MachineName,
+                request.Files.Count,
+                totalBytes,
+                sessionId,
+                request.Preflight),
             cancellationToken);
         var manifestAcknowledgement =
             await ProtocolFrame.ReadAsync<ProtocolAcknowledgement>(
@@ -85,6 +98,7 @@ public sealed class NetworkTransferService : INetworkTransferService
         EnsureAccepted(manifestAcknowledgement);
 
         var processedBytes = 0L;
+        var resumedBytes = 0L;
         var processedFiles = 0;
         foreach (var file in request.Files)
         {
@@ -96,21 +110,41 @@ public sealed class NetworkTransferService : INetworkTransferService
                     file.SourcePath);
             }
 
+            var expectedHash = await GetExpectedHashAsync(file, cancellationToken);
             await ProtocolFrame.WriteAsync(
                 secureStream,
-                new FileHeader(file.RelativePath, file.Length, file.LastWriteTimeUtc),
+                new FileHeader(
+                    file.RelativePath,
+                    file.Length,
+                    file.LastWriteTimeUtc,
+                    expectedHash),
                 cancellationToken);
+            var resume = await ProtocolFrame.ReadAsync<FileResumeResponse>(
+                secureStream,
+                cancellationToken);
+            if (!resume.Accepted)
+            {
+                throw new InvalidOperationException(
+                    resume.Message ?? $"Le receveur a refusé « {file.RelativePath} ».");
+            }
 
-            var hash = await SendFileAsync(
+            if (resume.Offset is < 0 or > file.Length)
+            {
+                throw new InvalidDataException(
+                    $"Le receveur a retourné un point de reprise invalide pour « {file.RelativePath} ».");
+            }
+
+            await SendFileAsync(
                 secureStream,
                 file,
+                resume.Offset,
                 processedBytes,
                 totalBytes,
                 progress,
                 cancellationToken);
             await ProtocolFrame.WriteAsync(
                 secureStream,
-                new FileTrailer(Convert.ToHexString(hash)),
+                new FileTrailer(expectedHash),
                 cancellationToken);
 
             var acknowledgement = await ProtocolFrame.ReadAsync<ProtocolAcknowledgement>(
@@ -118,6 +152,7 @@ public sealed class NetworkTransferService : INetworkTransferService
                 cancellationToken);
             EnsureAccepted(acknowledgement);
             processedBytes += file.Length;
+            resumedBytes += resume.Offset;
             processedFiles++;
         }
 
@@ -148,7 +183,10 @@ public sealed class NetworkTransferService : INetworkTransferService
             processedBytes,
             request.Host,
             completion.DestinationPath ?? string.Empty,
-            []);
+            [],
+            sessionId,
+            request.Preflight,
+            resumedBytes);
     }
 
     public async Task<TransferResult> ReceiveAsync(
@@ -157,6 +195,11 @@ public sealed class NetworkTransferService : INetworkTransferService
         CancellationToken cancellationToken = default)
     {
         ValidatePort(request.Port);
+        if (request.PairingExpiresAtUtc is { } expiry && expiry <= DateTimeOffset.UtcNow)
+        {
+            throw new InvalidOperationException("Le code d'association a expiré.");
+        }
+
         var destinationRoot = Path.GetFullPath(request.DestinationRoot);
         Directory.CreateDirectory(destinationRoot);
 
@@ -189,9 +232,10 @@ public sealed class NetworkTransferService : INetworkTransferService
                     ClientCertificateRequired = false,
                     EnabledSslProtocols = SslProtocols.Tls12 | SslProtocols.Tls13,
                     CertificateRevocationCheckMode = X509RevocationMode.NoCheck,
-                    ApplicationProtocols = [new SslApplicationProtocol("smartswitch/1")],
+                    ApplicationProtocols = [new SslApplicationProtocol(ApplicationProtocol)],
                 },
                 cancellationToken);
+            EnsureNegotiatedApplicationProtocol(secureStream);
 
             var fingerprint = SHA256.HashData(certificate.GetRawCertData());
             var peerName = await AuthenticateServerAsync(
@@ -204,14 +248,23 @@ public sealed class NetworkTransferService : INetworkTransferService
                 cancellationToken);
             ValidateManifest(manifest);
 
-            var sessionDirectory = CreateSessionDirectory(destinationRoot, manifest.ComputerName);
-            await ProtocolFrame.WriteAsync(
-                secureStream,
-                new ProtocolAcknowledgement(true),
-                cancellationToken);
+            var preflight = ValidateReceiverPreflight(manifest, destinationRoot, request.RequirePreOs);
+            if (!preflight.Accepted)
+            {
+                await ProtocolFrame.WriteAsync(secureStream, preflight, cancellationToken);
+                throw new InvalidOperationException(preflight.Message);
+            }
+
+            var sessionDirectory = CreateSessionDirectory(
+                destinationRoot,
+                manifest.ComputerName,
+                manifest.SessionId);
+            await ProtocolFrame.WriteAsync(secureStream, preflight, cancellationToken);
 
             var receivedPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             var receivedBytes = 0L;
+            var announcedBytes = 0L;
+            var resumedBytes = 0L;
             for (var index = 0; index < manifest.FileCount; index++)
             {
                 cancellationToken.ThrowIfCancellationRequested();
@@ -219,6 +272,13 @@ public sealed class NetworkTransferService : INetworkTransferService
                     secureStream,
                     cancellationToken);
                 ValidateFileHeader(header, manifest.TotalBytes);
+                announcedBytes = checked(announcedBytes + header.Length);
+                if (announcedBytes > manifest.TotalBytes)
+                {
+                    throw new InvalidDataException(
+                        "Les fichiers annoncés dépassent la taille totale du manifeste.");
+                }
+
                 var destinationPath = GetSafeDestinationPath(
                     sessionDirectory,
                     header.RelativePath);
@@ -234,10 +294,22 @@ public sealed class NetworkTransferService : INetworkTransferService
                 byte[] actualHash;
                 try
                 {
+                    var offset = DetermineResumeOffset(
+                        destinationPath,
+                        temporaryPath,
+                        header);
+                    var receivePath = File.Exists(destinationPath)
+                        ? destinationPath
+                        : temporaryPath;
+                    await ProtocolFrame.WriteAsync(
+                        secureStream,
+                        new FileResumeResponse(true, offset),
+                        cancellationToken);
                     actualHash = await ReceiveFileAsync(
                         secureStream,
-                        temporaryPath,
+                        receivePath,
                         header,
+                        offset,
                         receivedBytes,
                         manifest.TotalBytes,
                         progress,
@@ -245,17 +317,25 @@ public sealed class NetworkTransferService : INetworkTransferService
                     var trailer = await ProtocolFrame.ReadAsync<FileTrailer>(
                         secureStream,
                         cancellationToken);
-                    var expectedHash = Convert.FromHexString(trailer.Sha256);
-                    if (!CryptographicOperations.FixedTimeEquals(actualHash, expectedHash))
+                    var expectedHash = Convert.FromHexString(header.Sha256);
+                    var trailerHash = Convert.FromHexString(trailer.Sha256);
+                    if (!CryptographicOperations.FixedTimeEquals(expectedHash, trailerHash) ||
+                        !CryptographicOperations.FixedTimeEquals(actualHash, expectedHash))
                     {
+                        TryDeletePartialFile(temporaryPath);
                         throw new InvalidDataException(
                             $"Le contrôle d'intégrité a échoué pour « {header.RelativePath} ».");
                     }
 
-                    File.Move(temporaryPath, destinationPath, overwrite: false);
-                    File.SetLastWriteTimeUtc(destinationPath, header.LastWriteTimeUtc.UtcDateTime);
+                    if (!File.Exists(destinationPath))
+                    {
+                        File.Move(temporaryPath, destinationPath, overwrite: false);
+                        File.SetLastWriteTimeUtc(destinationPath, header.LastWriteTimeUtc.UtcDateTime);
+                    }
+
+                    resumedBytes += offset;
                 }
-                catch
+                catch (InvalidDataException)
                 {
                     TryDeletePartialFile(temporaryPath);
                     throw;
@@ -266,6 +346,12 @@ public sealed class NetworkTransferService : INetworkTransferService
                     secureStream,
                     new ProtocolAcknowledgement(true),
                     cancellationToken);
+            }
+
+            if (announcedBytes != manifest.TotalBytes)
+            {
+                throw new InvalidDataException(
+                    "La taille cumulée des fichiers ne correspond pas au manifeste.");
             }
 
             var completion = await ProtocolFrame.ReadAsync<TransferCompletion>(
@@ -302,7 +388,10 @@ public sealed class NetworkTransferService : INetworkTransferService
                 receivedBytes,
                 peerName,
                 sessionDirectory,
-                []);
+                [],
+                manifest.SessionId,
+                manifest.Preflight,
+                resumedBytes);
         }
         catch (SocketException) when (cancellationToken.IsCancellationRequested)
         {
@@ -314,9 +403,10 @@ public sealed class NetworkTransferService : INetworkTransferService
         }
     }
 
-    private static async Task<byte[]> SendFileAsync(
+    private static async Task SendFileAsync(
         Stream destination,
         MigrationFile file,
+        long resumeOffset,
         long alreadyProcessed,
         long totalBytes,
         IProgress<MigrationProgress>? progress,
@@ -334,9 +424,15 @@ public sealed class NetworkTransferService : INetworkTransferService
             throw new IOException($"La taille de « {file.SourcePath} » a changé depuis le scan.");
         }
 
-        using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+        if (resumeOffset > source.Length)
+        {
+            throw new InvalidDataException(
+                $"Le point de reprise dépasse la taille de « {file.SourcePath} ».");
+        }
+
+        source.Position = resumeOffset;
         var buffer = new byte[BufferSize];
-        var fileBytes = 0L;
+        var fileBytes = resumeOffset;
         while (fileBytes < file.Length)
         {
             var read = await source.ReadAsync(buffer, cancellationToken);
@@ -347,7 +443,6 @@ public sealed class NetworkTransferService : INetworkTransferService
             }
 
             await destination.WriteAsync(buffer.AsMemory(0, read), cancellationToken);
-            hash.AppendData(buffer, 0, read);
             fileBytes += read;
             ReportTransferProgress(
                 progress,
@@ -358,13 +453,13 @@ public sealed class NetworkTransferService : INetworkTransferService
         }
 
         await destination.FlushAsync(cancellationToken);
-        return hash.GetHashAndReset();
     }
 
     private static async Task<byte[]> ReceiveFileAsync(
         Stream source,
         string temporaryPath,
         FileHeader header,
+        long resumeOffset,
         long alreadyProcessed,
         long totalBytes,
         IProgress<MigrationProgress>? progress,
@@ -372,14 +467,38 @@ public sealed class NetworkTransferService : INetworkTransferService
     {
         await using var destination = new FileStream(
             temporaryPath,
-            FileMode.CreateNew,
-            FileAccess.Write,
+            FileMode.OpenOrCreate,
+            FileAccess.ReadWrite,
             FileShare.None,
             BufferSize,
             FileOptions.Asynchronous | FileOptions.SequentialScan);
+        if (destination.Length != resumeOffset)
+        {
+            throw new InvalidDataException(
+                $"Le fichier partiel de « {header.RelativePath} » est incohérent.");
+        }
+
         using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
         var buffer = new byte[BufferSize];
-        var remaining = header.Length;
+        destination.Position = 0;
+        var prefixRemaining = resumeOffset;
+        while (prefixRemaining > 0)
+        {
+            var read = await destination.ReadAsync(
+                buffer.AsMemory(0, (int)Math.Min(buffer.Length, prefixRemaining)),
+                cancellationToken);
+            if (read == 0)
+            {
+                throw new EndOfStreamException(
+                    $"Le fichier partiel de « {header.RelativePath} » est incomplet.");
+            }
+
+            hash.AppendData(buffer, 0, read);
+            prefixRemaining -= read;
+        }
+
+        destination.Position = resumeOffset;
+        var remaining = header.Length - resumeOffset;
 
         while (remaining > 0)
         {
@@ -595,22 +714,23 @@ public sealed class NetworkTransferService : INetworkTransferService
         }
     }
 
-    private static string CreateSessionDirectory(string root, string donorComputerName)
+    private static string CreateSessionDirectory(
+        string root,
+        string donorComputerName,
+        Guid sessionId)
     {
+        if (sessionId == Guid.Empty)
+        {
+            throw new InvalidDataException("L'identifiant de session est invalide.");
+        }
+
         var invalid = Path.GetInvalidFileNameChars();
         var safeName = new string(donorComputerName
             .Select(character => invalid.Contains(character) ? '_' : character)
             .ToArray());
-        var baseName = $"Depuis {safeName} - {DateTime.Now:yyyy-MM-dd HH-mm-ss}";
-        var candidate = Path.Combine(root, baseName);
-        var suffix = 2;
-        while (Directory.Exists(candidate))
-        {
-            candidate = Path.Combine(root, $"{baseName} ({suffix++})");
-        }
-
-        Directory.CreateDirectory(candidate);
-        return candidate;
+        var directory = Path.Combine(root, $"Depuis {safeName} - {sessionId:N}");
+        Directory.CreateDirectory(directory);
+        return directory;
     }
 
     private static string GetSafeDestinationPath(string sessionRoot, string relativePath)
@@ -647,6 +767,11 @@ public sealed class NetworkTransferService : INetworkTransferService
         {
             throw new InvalidDataException("La taille totale annoncée est invalide.");
         }
+
+        if (manifest.SessionId == Guid.Empty)
+        {
+            throw new InvalidDataException("L'identifiant de session est invalide.");
+        }
     }
 
     private static void ValidateFileHeader(FileHeader header, long manifestTotalBytes)
@@ -655,6 +780,22 @@ public sealed class NetworkTransferService : INetworkTransferService
         {
             throw new InvalidDataException(
                 $"Taille invalide pour « {header.RelativePath} ».");
+        }
+
+        if (string.IsNullOrWhiteSpace(header.Sha256) || header.Sha256.Length != 64)
+        {
+            throw new InvalidDataException(
+                $"Empreinte invalide pour « {header.RelativePath} ».");
+        }
+
+        try
+        {
+            _ = Convert.FromHexString(header.Sha256);
+        }
+        catch (FormatException)
+        {
+            throw new InvalidDataException(
+                $"Empreinte invalide pour « {header.RelativePath} ».");
         }
     }
 
@@ -711,5 +852,147 @@ public sealed class NetworkTransferService : INetworkTransferService
         {
             // The original transfer error is more useful than a cleanup error.
         }
+    }
+
+    private static void EnsureNegotiatedApplicationProtocol(SslStream stream)
+    {
+        if (!string.Equals(
+                stream.NegotiatedApplicationProtocol.Protocol,
+                ApplicationProtocol,
+                StringComparison.Ordinal))
+        {
+            throw new AuthenticationException("Le protocole SmartSwitch négocié est invalide.");
+        }
+    }
+
+    private static ProtocolAcknowledgement ValidateReceiverPreflight(
+        TransferManifest manifest,
+        string destinationRoot,
+        bool requirePreOs)
+    {
+        if (manifest.Preflight is { PackageSchemaVersion: not MigrationPackageSchema.CurrentVersion })
+        {
+            return new ProtocolAcknowledgement(
+                false,
+                "La version de package annoncée n'est pas prise en charge.");
+        }
+
+        var root = Path.GetPathRoot(destinationRoot);
+        if (string.IsNullOrWhiteSpace(root))
+        {
+            return new ProtocolAcknowledgement(
+                false,
+                "Le volume de réception est introuvable.");
+        }
+
+        var availableBytes = new DriveInfo(root).AvailableFreeSpace;
+        var requiredBytes = checked((long)Math.Ceiling(manifest.TotalBytes * 1.25));
+        if (availableBytes < requiredBytes)
+        {
+            return new ProtocolAcknowledgement(
+                false,
+                "L'espace disque du receveur est insuffisant.");
+        }
+
+        if (manifest.Preflight is { } preflight &&
+            !string.Equals(
+                preflight.DonorOsArchitecture,
+                System.Runtime.InteropServices.RuntimeInformation.OSArchitecture.ToString(),
+                StringComparison.OrdinalIgnoreCase))
+        {
+            return new ProtocolAcknowledgement(
+                false,
+                "Les architectures système des deux PC ne sont pas compatibles.");
+        }
+
+        if (requirePreOs && manifest.Preflight?.RequiresPreOs != true)
+        {
+            return new ProtocolAcknowledgement(
+                false,
+                "Le donneur n'a pas préparé un package compatible pré-OS.");
+        }
+
+        return new ProtocolAcknowledgement(true);
+    }
+
+    private static long DetermineResumeOffset(
+        string destinationPath,
+        string temporaryPath,
+        FileHeader header)
+    {
+        if (File.Exists(destinationPath))
+        {
+            var destinationInfo = new FileInfo(destinationPath);
+            if (destinationInfo.Length != header.Length ||
+                !string.Equals(
+                    ComputeSha256(destinationPath),
+                    header.Sha256,
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                throw new InvalidDataException(
+                    $"Le fichier reçu « {header.RelativePath} » ne correspond pas à la session.");
+            }
+
+            return header.Length;
+        }
+
+        if (!File.Exists(temporaryPath))
+        {
+            return 0;
+        }
+
+        var temporaryLength = new FileInfo(temporaryPath).Length;
+        if (temporaryLength > header.Length)
+        {
+            TryDeletePartialFile(temporaryPath);
+            return 0;
+        }
+
+        return temporaryLength;
+    }
+
+    private static async Task<string> GetExpectedHashAsync(
+        MigrationFile file,
+        CancellationToken cancellationToken)
+    {
+        if (!string.IsNullOrWhiteSpace(file.Sha256) &&
+            file.Sha256.Length == 64)
+        {
+            return file.Sha256.ToUpperInvariant();
+        }
+
+        await using var source = new FileStream(
+            file.SourcePath,
+            FileMode.Open,
+            FileAccess.Read,
+            FileShare.Read,
+            BufferSize,
+            FileOptions.Asynchronous | FileOptions.SequentialScan);
+        using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+        var buffer = new byte[BufferSize];
+        while (true)
+        {
+            var read = await source.ReadAsync(buffer, cancellationToken);
+            if (read == 0)
+            {
+                break;
+            }
+
+            hash.AppendData(buffer, 0, read);
+        }
+
+        return Convert.ToHexString(hash.GetHashAndReset());
+    }
+
+    private static string ComputeSha256(string path)
+    {
+        using var stream = new FileStream(
+            path,
+            FileMode.Open,
+            FileAccess.Read,
+            FileShare.Read,
+            BufferSize,
+            FileOptions.SequentialScan);
+        return Convert.ToHexString(SHA256.HashData(stream));
     }
 }

@@ -5,4 +5,7 @@ public sealed record MigrationFile(
     string SourcePath,
     string RelativePath,
     long Length,
-    DateTimeOffset LastWriteTimeUtc);
+    DateTimeOffset LastWriteTimeUtc)
+{
+    public string? Sha256 { get; init; }
+}

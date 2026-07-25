@@ -5,6 +5,9 @@ using SmartSwitch.Core.Services;
 using SmartSwitch.Infrastructure.Logging;
 using SmartSwitch.Infrastructure.Modules;
 using SmartSwitch.Infrastructure.Network;
+using SmartSwitch.Infrastructure.Packages;
+using SmartSwitch.Infrastructure.PreOs;
+using SmartSwitch.Infrastructure.PreOs;
 using SmartSwitch.Infrastructure.SystemAccess;
 
 namespace SmartSwitch.Infrastructure.DependencyInjection;
@@ -20,6 +23,14 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IMigrationLogger, JsonFileMigrationLogger>();
         services.AddSingleton<INetworkInformationService, NetworkInformationService>();
         services.AddSingleton<INetworkTransferService, NetworkTransferService>();
+        services.AddSingleton<IApplicationInventoryService, ApplicationInventoryService>();
+        services.AddSingleton<IMigrationPackageService, MigrationPackageService>();
+        services.AddSingleton<ISystemCompatibilityService, SystemCompatibilityService>();
+        services.AddSingleton<IPrivilegeService, PrivilegeService>();
+        services.AddSingleton<IPreOsPackageApplier, PreOsPackageApplier>();
+        services.AddSingleton<IPreOsService, PreOsService>();
+        services.AddSingleton<IPreOsPackageApplier, PreOsPackageApplier>();
+        services.AddSingleton<IPreOsService, PreOsService>();
 
         var assemblies = additionalModuleAssemblies
             .Append(typeof(UserFilesMigrationModule).Assembly)

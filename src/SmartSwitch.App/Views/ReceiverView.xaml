@@ -1,0 +1,311 @@
+<UserControl x:Class="SmartSwitch.App.Views.ReceiverView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="18" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+        <StackPanel>
+            <StackPanel Orientation="Horizontal">
+                <Border Padding="9,4"
+                        Background="#E8F8F4"
+                        CornerRadius="5">
+                    <TextBlock FontSize="11"
+                               FontWeight="Bold"
+                               Foreground="{StaticResource AccentBrush}"
+                               Text="PC RECEVEUR" />
+                </Border>
+            </StackPanel>
+            <TextBlock Margin="0,9,0,0"
+                       FontSize="27"
+                       FontWeight="Bold"
+                       Text="Autoriser la réception sur ce PC" />
+            <TextBlock Margin="0,5,0,0"
+                       Foreground="{StaticResource MutedTextBrush}"
+                       Text="Démarrez l'écoute, puis entrez ces informations sur le PC donneur." />
+        </StackPanel>
+
+        <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto">
+            <Grid Margin="0,0,8,20">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="1.35*" />
+                    <ColumnDefinition Width="20" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+
+                <StackPanel>
+                    <Border Style="{StaticResource CardStyle}">
+                        <StackPanel>
+                            <Grid>
+                                <StackPanel>
+                                    <TextBlock Style="{StaticResource SectionTitleStyle}"
+                                               Text="Code d'association" />
+                                    <TextBlock Margin="0,5,0,0"
+                                               Foreground="{StaticResource MutedTextBrush}"
+                                               Text="Valide pour cette session de réception."
+                                               TextWrapping="Wrap" />
+                                </StackPanel>
+                                <Button HorizontalAlignment="Right"
+                                        VerticalAlignment="Top"
+                                        Command="{Binding RegenerateCodeCommand}"
+                                        Content="Nouveau code"
+                                        IsEnabled="{Binding IsNotBusy}"
+                                        Style="{StaticResource SecondaryButtonStyle}" />
+                            </Grid>
+
+                            <Border Margin="0,20,0,0"
+                                    Padding="24,18"
+                                    Background="#142A49"
+                                    CornerRadius="12">
+                                <StackPanel HorizontalAlignment="Center">
+                                    <TextBlock HorizontalAlignment="Center"
+                                               FontFamily="Consolas"
+                                               FontSize="34"
+                                               FontWeight="Bold"
+                                               Foreground="White"
+                                               Text="{Binding PairingCodeText}" />
+                                    <TextBlock Margin="0,7,0,0"
+                                               Foreground="#9DB3D1"
+                                               Text="À saisir uniquement sur le PC donneur" />
+                                </StackPanel>
+                            </Border>
+
+                            <Grid Margin="0,20,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="16" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel>
+                                    <TextBlock FontWeight="SemiBold"
+                                               Text="Adresse principale" />
+                                    <TextBlock Margin="0,5,0,0"
+                                               FontFamily="Consolas"
+                                               FontSize="19"
+                                               Foreground="{StaticResource PrimaryBrush}"
+                                               Text="{Binding PrimaryAddress}" />
+                                </StackPanel>
+                                <StackPanel Grid.Column="2">
+                                    <TextBlock FontWeight="SemiBold" Text="Port" />
+                                    <TextBlock Margin="0,5,0,0"
+                                               FontFamily="Consolas"
+                                               FontSize="19"
+                                               Text="{Binding Port}" />
+                                </StackPanel>
+                            </Grid>
+
+                            <Border Margin="0,18,0,0"
+                                    Padding="12"
+                                    Background="#F7F9FC"
+                                    CornerRadius="8">
+                                <StackPanel>
+                                    <TextBlock FontSize="12"
+                                               FontWeight="SemiBold"
+                                               Text="Autres adresses détectées" />
+                                    <TextBlock Margin="0,4,0,0"
+                                               FontFamily="Consolas"
+                                               FontSize="12"
+                                               Foreground="{StaticResource MutedTextBrush}"
+                                               Text="{Binding LocalAddresses}"
+                                               TextWrapping="Wrap" />
+                                </StackPanel>
+                            </Border>
+                        </StackPanel>
+                    </Border>
+
+                    <Border Margin="0,18,0,0" Style="{StaticResource CardStyle}">
+                        <StackPanel>
+                            <TextBlock Style="{StaticResource SectionTitleStyle}"
+                                       Text="Dossier de destination" />
+                            <TextBlock Margin="0,5,0,13"
+                                       Foreground="{StaticResource MutedTextBrush}"
+                                       Text="Une sous-arborescence datée sera créée pour chaque PC donneur."
+                                       TextWrapping="Wrap" />
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="10" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBox IsEnabled="{Binding IsNotBusy}"
+                                         Text="{Binding DestinationRoot, UpdateSourceTrigger=PropertyChanged}"
+                                         Style="{StaticResource InputStyle}" />
+                                <Button Grid.Column="2"
+                                        Command="{Binding BrowseDestinationCommand}"
+                                        Content="Parcourir"
+                                        IsEnabled="{Binding IsNotBusy}"
+                                        Style="{StaticResource SecondaryButtonStyle}" />
+                            </Grid>
+                            <Button Margin="0,12,0,0"
+                                    HorizontalAlignment="Left"
+                                    Command="{Binding OpenDestinationCommand}"
+                                    Content="Ouvrir le dossier"
+                                    Style="{StaticResource SecondaryButtonStyle}" />
+                        </StackPanel>
+                    </Border>
+
+                    <Border Margin="0,18,0,0"
+                            Padding="16"
+                            Background="#EAF1FD"
+                            BorderBrush="#CBDAF2"
+                            BorderThickness="1"
+                            CornerRadius="10">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Margin="0,0,12,0"
+                                       VerticalAlignment="Top"
+                                       FontFamily="Segoe Fluent Icons"
+                                       FontSize="20"
+                                       Foreground="{StaticResource PrimaryBrush}"
+                                       Text="&#xE72E;" />
+                            <TextBlock Foreground="#28496F" TextWrapping="Wrap">
+                                <Run FontWeight="SemiBold" Text="Protection active. " />
+                                <Run Text="Le transfert utilise TLS, refuse les codes incorrects et vérifie l'empreinte SHA-256 de chaque fichier." />
+                            </TextBlock>
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+
+                <StackPanel Grid.Column="2">
+                    <Border Style="{StaticResource CardStyle}">
+                        <StackPanel>
+                            <Grid>
+                                <StackPanel>
+                                    <TextBlock Style="{StaticResource SectionTitleStyle}"
+                                               Text="{Binding StatusMessage}" />
+                                    <TextBlock Margin="0,5,0,0"
+                                               Foreground="{StaticResource MutedTextBrush}"
+                                               Text="{Binding StatusDetail}"
+                                               TextWrapping="Wrap" />
+                                </StackPanel>
+                                <TextBlock HorizontalAlignment="Right"
+                                           VerticalAlignment="Top"
+                                           FontWeight="SemiBold"
+                                           Foreground="{StaticResource AccentBrush}"
+                                           Text="{Binding ProgressPercentage, StringFormat={}{0:N0}%}" />
+                            </Grid>
+                            <ProgressBar Margin="0,17,0,0"
+                                         Foreground="{StaticResource AccentBrush}"
+                                         Value="{Binding ProgressPercentage, Mode=OneWay}" />
+                            <Button Margin="0,20,0,0"
+                                    Command="{Binding StartListeningCommand}"
+                                    Content="Démarrer la réception"
+                                    IsEnabled="{Binding IsNotBusy}"
+                                    Style="{StaticResource PrimaryButtonStyle}" />
+                            <Button Margin="0,9,0,0"
+                                    Command="{Binding CancelCommand}"
+                                    Content="Arrêter l'écoute"
+                                    Style="{StaticResource DangerButtonStyle}"
+                                    Visibility="{Binding IsBusy, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                            <Button Margin="0,9,0,0"
+                                    Command="{Binding OpenDestinationCommand}"
+                                    Content="Afficher les fichiers reçus"
+                                    Style="{StaticResource SecondaryButtonStyle}"
+                                    Visibility="{Binding HasReceivedFiles, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                        </StackPanel>
+                    </Border>
+
+                    <Border Margin="0,18,0,0" Style="{StaticResource CardStyle}">
+                        <StackPanel>
+                            <TextBlock Style="{StaticResource SectionTitleStyle}"
+                                       Text="Étapes" />
+                            <Grid Margin="0,15,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="28" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <Border Width="24"
+                                        Height="24"
+                                        VerticalAlignment="Top"
+                                        Background="#EAF1FD"
+                                        CornerRadius="12">
+                                    <TextBlock HorizontalAlignment="Center"
+                                               VerticalAlignment="Center"
+                                               FontSize="11"
+                                               FontWeight="Bold"
+                                               Foreground="{StaticResource PrimaryBrush}"
+                                               Text="1" />
+                                </Border>
+                                <TextBlock Grid.Column="1"
+                                           Margin="8,2,0,0"
+                                           Text="Cliquez sur « Démarrer la réception »."
+                                           TextWrapping="Wrap" />
+                            </Grid>
+                            <Grid Margin="0,12,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="28" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <Border Width="24"
+                                        Height="24"
+                                        VerticalAlignment="Top"
+                                        Background="#EAF1FD"
+                                        CornerRadius="12">
+                                    <TextBlock HorizontalAlignment="Center"
+                                               VerticalAlignment="Center"
+                                               FontSize="11"
+                                               FontWeight="Bold"
+                                               Foreground="{StaticResource PrimaryBrush}"
+                                               Text="2" />
+                                </Border>
+                                <TextBlock Grid.Column="1"
+                                           Margin="8,2,0,0"
+                                           Text="Saisissez l'adresse et le code sur le donneur."
+                                           TextWrapping="Wrap" />
+                            </Grid>
+                            <Grid Margin="0,12,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="28" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <Border Width="24"
+                                        Height="24"
+                                        VerticalAlignment="Top"
+                                        Background="#EAF1FD"
+                                        CornerRadius="12">
+                                    <TextBlock HorizontalAlignment="Center"
+                                               VerticalAlignment="Center"
+                                               FontSize="11"
+                                               FontWeight="Bold"
+                                               Foreground="{StaticResource PrimaryBrush}"
+                                               Text="3" />
+                                </Border>
+                                <TextBlock Grid.Column="1"
+                                           Margin="8,2,0,0"
+                                           Text="Gardez les deux applications ouvertes."
+                                           TextWrapping="Wrap" />
+                            </Grid>
+                        </StackPanel>
+                    </Border>
+
+                    <Border Margin="0,18,0,0" Style="{StaticResource CardStyle}">
+                        <StackPanel>
+                            <TextBlock Style="{StaticResource SectionTitleStyle}"
+                                       Text="Journal en direct" />
+                            <ListBox Height="150"
+                                     Margin="0,10,0,0"
+                                     Background="Transparent"
+                                     BorderThickness="0"
+                                     ItemsSource="{Binding Logs}">
+                                <ListBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <StackPanel Margin="0,4">
+                                            <TextBlock FontSize="12"
+                                                       FontWeight="SemiBold"
+                                                       Text="{Binding Source}" />
+                                            <TextBlock FontSize="11"
+                                                       Foreground="{StaticResource MutedTextBrush}"
+                                                       Text="{Binding Message}"
+                                                       TextWrapping="Wrap" />
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </ListBox.ItemTemplate>
+                            </ListBox>
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+            </Grid>
+        </ScrollViewer>
+    </Grid>
+</UserControl>

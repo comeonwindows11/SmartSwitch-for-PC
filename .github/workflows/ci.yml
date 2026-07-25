@@ -1,0 +1,40 @@
+name: CI
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Restore
+        run: dotnet restore SmartSwitch.sln
+
+      - name: Build
+        run: dotnet build SmartSwitch.sln --configuration Release --no-restore
+
+      - name: Test
+        run: dotnet test tests/SmartSwitch.Core.Tests/SmartSwitch.Core.Tests.csproj --configuration Release --no-build
+
+      - name: Build installer
+        shell: pwsh
+        run: ./build/Build-Installer.ps1 -Configuration Release -SkipTests
+
+      - name: Upload installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: SmartSwitch-Setup
+          path: artifacts/installer/SmartSwitch-Setup.exe

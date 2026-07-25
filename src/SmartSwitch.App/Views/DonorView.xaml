@@ -1,0 +1,295 @@
+<UserControl x:Class="SmartSwitch.App.Views.DonorView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <UserControl.Resources>
+        <Style x:Key="ModeRadioStyle" TargetType="RadioButton">
+            <Setter Property="Margin" Value="0,0,8,0" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="RadioButton">
+                        <Border x:Name="Border"
+                                Padding="14,9"
+                                Background="#F5F7FA"
+                                BorderBrush="{StaticResource BorderBrush}"
+                                BorderThickness="1"
+                                CornerRadius="8">
+                            <ContentPresenter />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="Border" Property="Background" Value="#EAF1FD" />
+                                <Setter TargetName="Border"
+                                        Property="BorderBrush"
+                                        Value="{StaticResource PrimaryBrush}" />
+                                <Setter Property="Foreground" Value="{StaticResource PrimaryBrush}" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </UserControl.Resources>
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="18" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+        <Grid>
+            <StackPanel>
+                <StackPanel Orientation="Horizontal">
+                    <Border Padding="9,4"
+                            Background="#EAF1FD"
+                            CornerRadius="5">
+                        <TextBlock FontSize="11"
+                                   FontWeight="Bold"
+                                   Foreground="{StaticResource PrimaryBrush}"
+                                   Text="PC DONNEUR" />
+                    </Border>
+                </StackPanel>
+                <TextBlock Margin="0,9,0,0"
+                           FontSize="27"
+                           FontWeight="Bold"
+                           Text="Préparer les données à transférer" />
+                <TextBlock Margin="0,5,0,0"
+                           Foreground="{StaticResource MutedTextBrush}"
+                           Text="Sélectionnez le niveau d'analyse et les dossiers de ce poste." />
+            </StackPanel>
+        </Grid>
+
+        <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto">
+            <Grid Margin="0,0,8,20">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="1.55*" />
+                    <ColumnDefinition Width="20" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+
+                <StackPanel>
+                    <Border Style="{StaticResource CardStyle}">
+                        <StackPanel>
+                            <TextBlock Style="{StaticResource SectionTitleStyle}"
+                                       Text="1. Niveau de migration" />
+                            <TextBlock Margin="0,5,0,16"
+                                       Foreground="{StaticResource MutedTextBrush}"
+                                       Text="Advanced est recommandé pour le premier transfert."
+                                       TextWrapping="Wrap" />
+                            <StackPanel Orientation="Horizontal">
+                                <RadioButton Command="{Binding SelectModeCommand}"
+                                             CommandParameter="Safe"
+                                             Content="Safe"
+                                             GroupName="MigrationMode"
+                                             IsChecked="{Binding IsSafeMode, Mode=OneWay}"
+                                             Style="{StaticResource ModeRadioStyle}" />
+                                <RadioButton Command="{Binding SelectModeCommand}"
+                                             CommandParameter="Advanced"
+                                             Content="Advanced"
+                                             GroupName="MigrationMode"
+                                             IsChecked="{Binding IsAdvancedMode, Mode=OneWay}"
+                                             Style="{StaticResource ModeRadioStyle}" />
+                                <RadioButton Command="{Binding SelectModeCommand}"
+                                             CommandParameter="Custom"
+                                             Content="Custom"
+                                             GroupName="MigrationMode"
+                                             IsChecked="{Binding IsCustomMode, Mode=OneWay}"
+                                             Style="{StaticResource ModeRadioStyle}" />
+                            </StackPanel>
+                            <Border Margin="0,16,0,0"
+                                    Padding="12"
+                                    Background="#FFF8E7"
+                                    CornerRadius="8">
+                                <TextBlock Foreground="#876112" TextWrapping="Wrap">
+                                    <Run FontWeight="SemiBold" Text="Safe : " />
+                                    <Run Text="scan uniquement, aucune connexion ni écriture distante." />
+                                </TextBlock>
+                            </Border>
+                        </StackPanel>
+                    </Border>
+
+                    <Border Margin="0,18,0,0" Style="{StaticResource CardStyle}">
+                        <StackPanel>
+                            <TextBlock Style="{StaticResource SectionTitleStyle}"
+                                       Text="2. Données utilisateur" />
+                            <TextBlock Margin="0,5,0,12"
+                                       Foreground="{StaticResource MutedTextBrush}"
+                                       Text="Les applications et paramètres système seront ajoutés par de futurs modules." />
+                            <UniformGrid Columns="2">
+                                <CheckBox Content="Bureau" IsChecked="{Binding IncludeDesktop}" />
+                                <CheckBox Content="Documents" IsChecked="{Binding IncludeDocuments}" />
+                                <CheckBox Content="Téléchargements" IsChecked="{Binding IncludeDownloads}" />
+                                <CheckBox Content="Images" IsChecked="{Binding IncludePictures}" />
+                                <CheckBox Content="Musique" IsChecked="{Binding IncludeMusic}" />
+                                <CheckBox Content="Vidéos" IsChecked="{Binding IncludeVideos}" />
+                            </UniformGrid>
+
+                            <Border Margin="0,12,0,0">
+                                <Border.Style>
+                                    <Style TargetType="Border">
+                                        <Setter Property="Visibility" Value="Collapsed" />
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding IsCustomMode}" Value="True">
+                                                <Setter Property="Visibility" Value="Visible" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Border.Style>
+                                <StackPanel>
+                                    <TextBlock Margin="0,4,0,6"
+                                               FontWeight="SemiBold"
+                                               Text="Dossier personnalisé" />
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="10" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBox Text="{Binding CustomFolderPath, UpdateSourceTrigger=PropertyChanged}"
+                                                 Style="{StaticResource InputStyle}" />
+                                        <Button Grid.Column="2"
+                                                Command="{Binding BrowseCustomFolderCommand}"
+                                                Content="Parcourir"
+                                                Style="{StaticResource SecondaryButtonStyle}" />
+                                    </Grid>
+                                </StackPanel>
+                            </Border>
+                        </StackPanel>
+                    </Border>
+
+                    <Border Margin="0,18,0,0">
+                        <Border.Style>
+                            <Style TargetType="Border" BasedOn="{StaticResource CardStyle}">
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsSafeMode}" Value="True">
+                                        <Setter Property="Visibility" Value="Collapsed" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Border.Style>
+                        <StackPanel>
+                            <TextBlock Style="{StaticResource SectionTitleStyle}"
+                                       Text="3. PC receveur" />
+                            <TextBlock Margin="0,5,0,15"
+                                       Foreground="{StaticResource MutedTextBrush}"
+                                       Text="Recopiez les informations affichées dans la section « PC receveur » de l'autre ordinateur."
+                                       TextWrapping="Wrap" />
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="14" />
+                                    <ColumnDefinition Width="170" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel>
+                                    <TextBlock Margin="0,0,0,6"
+                                               FontWeight="SemiBold"
+                                               Text="Adresse IP ou nom du PC" />
+                                    <TextBox Text="{Binding ReceiverHost, UpdateSourceTrigger=PropertyChanged}"
+                                             ToolTip="Exemple : 192.168.1.25"
+                                             Style="{StaticResource InputStyle}" />
+                                </StackPanel>
+                                <StackPanel Grid.Column="2">
+                                    <TextBlock Margin="0,0,0,6"
+                                               FontWeight="SemiBold"
+                                               Text="Code d'association" />
+                                    <TextBox MaxLength="9"
+                                             FontFamily="Consolas"
+                                             FontSize="16"
+                                             Text="{Binding PairingCodeText, UpdateSourceTrigger=PropertyChanged}"
+                                             ToolTip="8 chiffres"
+                                             Style="{StaticResource InputStyle}" />
+                                </StackPanel>
+                            </Grid>
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+
+                <StackPanel Grid.Column="2">
+                    <Border Style="{StaticResource CardStyle}">
+                        <StackPanel>
+                            <TextBlock Style="{StaticResource SectionTitleStyle}"
+                                       Text="Aperçu" />
+                            <Border Margin="0,14,0,0"
+                                    Padding="14"
+                                    Background="#F7F9FC"
+                                    CornerRadius="9">
+                                <StackPanel>
+                                    <TextBlock FontWeight="SemiBold"
+                                               Text="{Binding ScanSummary}" />
+                                    <TextBlock Margin="0,5,0,0"
+                                               Foreground="{StaticResource WarningBrush}"
+                                               Text="{Binding WarningSummary}"
+                                               TextWrapping="Wrap"
+                                               Visibility="{Binding HasWarnings, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                </StackPanel>
+                            </Border>
+                            <Button Margin="0,14,0,0"
+                                    Command="{Binding ScanCommand}"
+                                    Content="Analyser la sélection"
+                                    IsEnabled="{Binding IsNotBusy}"
+                                    Style="{StaticResource SecondaryButtonStyle}" />
+                        </StackPanel>
+                    </Border>
+
+                    <Border Margin="0,18,0,0" Style="{StaticResource CardStyle}">
+                        <StackPanel>
+                            <Grid>
+                                <StackPanel>
+                                    <TextBlock Style="{StaticResource SectionTitleStyle}"
+                                               Text="{Binding StatusMessage}" />
+                                    <TextBlock Margin="0,5,0,0"
+                                               Foreground="{StaticResource MutedTextBrush}"
+                                               Text="{Binding StatusDetail}"
+                                               TextWrapping="Wrap" />
+                                </StackPanel>
+                                <TextBlock HorizontalAlignment="Right"
+                                           VerticalAlignment="Top"
+                                           FontWeight="SemiBold"
+                                           Foreground="{StaticResource PrimaryBrush}"
+                                           Text="{Binding ProgressPercentage, StringFormat={}{0:N0}%}" />
+                            </Grid>
+                            <ProgressBar Margin="0,16,0,0"
+                                         Value="{Binding ProgressPercentage, Mode=OneWay}" />
+                            <Button Margin="0,18,0,0"
+                                    Command="{Binding StartTransferCommand}"
+                                    Content="{Binding PrimaryActionText}"
+                                    IsEnabled="{Binding IsNotBusy}"
+                                    Style="{StaticResource PrimaryButtonStyle}" />
+                            <Button Margin="0,9,0,0"
+                                    Command="{Binding CancelCommand}"
+                                    Content="Annuler"
+                                    Style="{StaticResource DangerButtonStyle}"
+                                    Visibility="{Binding IsBusy, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                        </StackPanel>
+                    </Border>
+
+                    <Border Margin="0,18,0,0" Style="{StaticResource CardStyle}">
+                        <StackPanel>
+                            <TextBlock Style="{StaticResource SectionTitleStyle}"
+                                       Text="Journal en direct" />
+                            <ListBox Height="150"
+                                     Margin="0,10,0,0"
+                                     Background="Transparent"
+                                     BorderThickness="0"
+                                     ItemsSource="{Binding Logs}">
+                                <ListBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <StackPanel Margin="0,4">
+                                            <TextBlock FontSize="12"
+                                                       FontWeight="SemiBold"
+                                                       Text="{Binding Source}" />
+                                            <TextBlock FontSize="11"
+                                                       Foreground="{StaticResource MutedTextBrush}"
+                                                       Text="{Binding Message}"
+                                                       TextWrapping="Wrap" />
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </ListBox.ItemTemplate>
+                            </ListBox>
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+            </Grid>
+        </ScrollViewer>
+    </Grid>
+</UserControl>

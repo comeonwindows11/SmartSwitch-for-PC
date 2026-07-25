@@ -1,0 +1,29 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\SmartSwitch.Core\SmartSwitch.Core.csproj" />
+    <ProjectReference Include="..\SmartSwitch.Infrastructure\SmartSwitch.Infrastructure.csproj" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UseWPF>true</UseWPF>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <AssemblyName>SmartSwitch</AssemblyName>
+    <RootNamespace>SmartSwitch.App</RootNamespace>
+    <Version>0.1.0</Version>
+    <Authors>SmartSwitch Contributors</Authors>
+    <Product>SmartSwitch Migration Tool</Product>
+    <Description>Migration sécurisée de PC à PC pour Windows.</Description>
+    <!-- Instance properties are required for WPF binding; CTS instances are operation-scoped and disposed in finally blocks. -->
+    <NoWarn>$(NoWarn);CA1822;CA1001</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+</Project>
